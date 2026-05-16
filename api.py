@@ -44,6 +44,29 @@ async def get_product(product_id: int):
     return dict(product)
 
 
+@router.get("/products/search")
+async def search_products(q: str = ""):
+    """Поиск товаров по названию и описанию"""
+    if not q:
+        return []
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM products 
+        WHERE name LIKE ? OR description LIKE ?
+        ORDER BY 
+            CASE 
+                WHEN name LIKE ? THEN 1 
+                WHEN description LIKE ? THEN 2 
+                ELSE 3 
+            END
+    """, (f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%'))
+    products = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return products
+
+
 @router.get("/categories")
 async def get_categories():
     conn = get_db()

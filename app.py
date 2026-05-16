@@ -10,18 +10,83 @@ templates = Jinja2Templates(directory="templates")
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def index(request: Request, page: int = 1, category: str = "", price_min: float = None, price_max: float = None):
+    per_page = 9  # 9 товаров на страницу
+
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM products")
+
+    # Базовый запрос с фильтрами
+    query = "SELECT * FROM products WHERE 1=1"
+    count_query = "SELECT COUNT(*) as total FROM products WHERE 1=1"
+    params = []
+
+    if category:
+        query += " AND category = ?"
+        count_query += " AND category = ?"
+        params.append(category)
+    if price_min:
+        query += " AND price >= ?"
+        count_query += " AND price >= ?"
+        params.append(price_min)
+    if price_max:
+        query += " AND price <= ?"
+        count_query += " AND price <= ?"
+        params.append(price_max)
+
+    # Получаем общее количество товаров
+    cursor.execute(count_query, params)
+    total = cursor.fetchone()['total']
+
+    # Пагинация
+    offset = (page - 1) * per_page
+    query += " LIMIT ? OFFSET ?"
+    params.extend([per_page, offset])
+
+    cursor.execute(query, params)
     products = cursor.fetchall()
+
+    # Категории для фильтра
     cursor.execute("SELECT DISTINCT category FROM products")
     categories = cursor.fetchall()
     conn.close()
+
+    total_pages = (total + per_page - 1) // per_page
+
     return templates.TemplateResponse("index.html", {
         "request": request,
         "products": products,
-        "categories": categories
+        "categories": categories,
+        "page": page,
+        "total_pages": total_pages,
+        "total": total,
+        "per_page": per_page,
+        "selected_category": category,
+        "price_min": price_min,
+        "price_max": price_max
+    })
+
+
+@app.get("/search", response_class=HTMLResponse)
+async def search_page(request: Request, q: str = ""):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    if q:
+        cursor.execute("""
+            SELECT * FROM products 
+            WHERE name LIKE ? OR description LIKE ?
+        """, (f'%{q}%', f'%{q}%'))
+        products = cursor.fetchall()
+    else:
+        products = []
+
+    conn.close()
+
+    return templates.TemplateResponse("search.html", {
+        "request": request,
+        "products": products,
+        "search_query": q
     })
 
 

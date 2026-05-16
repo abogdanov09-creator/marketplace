@@ -5,14 +5,13 @@ import time
 
 
 def open_browser():
-    time.sleep(1)
+    time.sleep(1.5)
     webbrowser.open("http://localhost:8002")
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    # Открываем браузер в отдельном потоке
     threading.Thread(target=open_browser, daemon=True).start()
 
     print("""
@@ -22,8 +21,8 @@ if __name__ == "__main__":
     ║  🌐 Веб-интерфейс:  http://localhost:8002                    ║
     ║  🛒 Корзина:        http://localhost:8002/cart               ║
     ║  ❤️ Избранное:      http://localhost:8002/wishlist           ║
-    ║  👤 Профиль:        http://localhost:8002/profile            ║
     ║  👑 Админ-панель:   http://localhost:8002/admin              ║
+    ║  🔍 Поиск:          http://localhost:8002/search             ║
     ║  📡 API:            http://localhost:8002/api/products       ║
     ║  📚 Документация:   http://localhost:8002/docs               ║
     ╚══════════════════════════════════════════════════════════════╝
