@@ -5,7 +5,7 @@
     <title>MarketPlacer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .product-card { transition: 0.3s; margin-bottom: 20px; cursor: pointer; }
+        .product-card { transition: 0.3s; margin-bottom: 20px; }
         .product-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
         .price { font-size: 1.3rem; font-weight: bold; color: #198754; }
         .hero { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 20px; padding: 50px; margin-bottom: 40px; color: white; }
@@ -16,7 +16,8 @@
 <nav class="navbar navbar-dark bg-dark">
     <div class="container">
         <a class="navbar-brand" href="/">MarketPlacer</a>
-        <a href="/cart" class="btn btn-outline-light">🛒 Корзина</a>
+        <a href="/cart" class="btn btn-outline-light me-2">🛒 Корзина</a>
+        <a href="/wishlist" class="btn btn-outline-light">❤️ Избранное</a>
     </div>
 </nav>
 
@@ -35,10 +36,16 @@
                     <span class="badge bg-secondary">{{ product.category }}</span>
                     <div class="price mt-2">${{ product.price }}</div>
                     <p class="mt-2 text-muted small">{{ product.description[:80] }}...</p>
-                    <button class="btn btn-primary w-100 mt-2" onclick="addToCart({{ product.id }})">
-                        🛒 В корзину
-                    </button>
-                    <a href="/product/{{ product.id }}" class="btn btn-outline-secondary w-100 mt-2">Подробнее</a>
+
+                    <div class="d-grid gap-2 mt-2">
+                        <button class="btn btn-primary" onclick="addToCart({{ product.id }})">
+                            🛒 В корзину
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="addToWishlist({{ product.id }}, this)">
+                            ❤️ В избранное
+                        </button>
+                        <a href="/product/{{ product.id }}" class="btn btn-outline-secondary">Подробнее</a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -51,6 +58,15 @@ function addToCart(productId) {
     fetch(`/api/cart/add/${productId}`, { method: 'POST' })
         .then(() => {
             alert('✅ Товар добавлен в корзину!');
+        });
+}
+
+function addToWishlist(productId, btn) {
+    fetch(`/api/wishlist/add/${productId}`, { method: 'POST' })
+        .then(() => {
+            btn.innerHTML = '✅ В избранном';
+            btn.disabled = true;
+            alert('❤️ Товар добавлен в избранное!');
         });
 }
 </script>

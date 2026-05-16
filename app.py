@@ -61,3 +61,8 @@ async def add_comment(product_id: int = Form(...), author: str = Form(...), text
 @app.get("/cart", response_class=HTMLResponse)
 async def cart_page(request: Request):
     return templates.TemplateResponse("cart.html", {"request": request})
+
+
+@app.get("/wishlist", response_class=HTMLResponse)
+async def wishlist_page(request: Request):
+    return templates.TemplateResponse("wishlist.html", {"request": request})

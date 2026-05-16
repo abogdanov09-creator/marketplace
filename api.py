@@ -201,3 +201,68 @@ async def clear_cart():
     response = JSONResponse(content={"message": "Корзина очищена"})
     save_cart_to_cookie(response, {})
     return response
+
+
+# ==================== ИЗБРАННОЕ ====================
+
+def get_wishlist_from_cookie(request: Request):
+    wishlist = request.cookies.get("wishlist")
+    if wishlist:
+        return json.loads(wishlist)
+    return []
+
+
+def save_wishlist_to_cookie(response: Response, wishlist: list):
+    response.set_cookie(key="wishlist", value=json.dumps(wishlist), max_age=30 * 24 * 60 * 60, path="/")
+
+
+@router.get("/wishlist")
+async def get_wishlist(request: Request):
+    wishlist_ids = get_wishlist_from_cookie(request)
+
+    wishlist_items = []
+    conn = get_db()
+    cursor = conn.cursor()
+
+    for product_id in wishlist_ids:
+        cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+        product = cursor.fetchone()
+        if product:
+            wishlist_items.append(dict(product))
+
+    conn.close()
+    return wishlist_items
+
+
+@router.post("/wishlist/add/{product_id}")
+async def add_to_wishlist(request: Request, product_id: int):
+    from fastapi.responses import JSONResponse
+
+    wishlist = get_wishlist_from_cookie(request)
+
+    if product_id not in wishlist:
+        wishlist.append(product_id)
+
+    response = JSONResponse(content={"message": "Товар добавлен в избранное"})
+    save_wishlist_to_cookie(response, wishlist)
+    return response
+
+
+@router.post("/wishlist/remove/{product_id}")
+async def remove_from_wishlist(request: Request, product_id: int):
+    from fastapi.responses import JSONResponse
+
+    wishlist = get_wishlist_from_cookie(request)
+
+    if product_id in wishlist:
+        wishlist.remove(product_id)
+
+    response = JSONResponse(content={"message": "Товар удалён из избранного"})
+    save_wishlist_to_cookie(response, wishlist)
+    return response
+
+
+@router.get("/wishlist/check/{product_id}")
+async def check_wishlist(request: Request, product_id: int):
+    wishlist = get_wishlist_from_cookie(request)
+    return {"in_wishlist": product_id in wishlist}
