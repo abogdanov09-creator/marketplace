@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, Response
 from database import get_db
 import json
+from werkzeug.security import generate_password_hash, check_password_hash
 
 router = APIRouter(prefix="/api", tags=["API"])
 
@@ -266,3 +267,78 @@ async def remove_from_wishlist(request: Request, product_id: int):
 async def check_wishlist(request: Request, product_id: int):
     wishlist = get_wishlist_from_cookie(request)
     return {"in_wishlist": product_id in wishlist}
+
+
+# ==================== АВТОРИЗАЦИЯ ====================
+
+@router.post("/auth/register")
+async def register(username: str, email: str, password: str):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id FROM users WHERE username = ? OR email = ?", (username, email))
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Пользователь уже существует")
+
+    password_hash = generate_password_hash(password)
+    cursor.execute(
+        "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+        (username, email, password_hash)
+    )
+    conn.commit()
+    user_id = cursor.lastrowid
+    conn.close()
+
+    return {"id": user_id, "username": username, "email": email, "message": "Регистрация успешна"}
+
+
+@router.post("/auth/login")
+async def login(username: str, password: str, request: Request):
+    from fastapi.responses import JSONResponse
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM users WHERE username = ? OR email = ?",
+        (username, username)
+    )
+    user = cursor.fetchone()
+    conn.close()
+
+    if not user or not check_password_hash(user["password_hash"], password):
+        raise HTTPException(status_code=401, detail="Неверные учётные данные")
+
+    response = JSONResponse(
+        content={"message": "Вход выполнен", "username": user["username"], "is_admin": bool(user["is_admin"])})
+    response.set_cookie(key="user_id", value=str(user["id"]), max_age=30 * 24 * 60 * 60, path="/")
+    response.set_cookie(key="username", value=user["username"], max_age=30 * 24 * 60 * 60, path="/")
+    response.set_cookie(key="is_admin", value=str(user["is_admin"]), max_age=30 * 24 * 60 * 60, path="/")
+    return response
+
+
+@router.post("/auth/logout")
+async def logout():
+    from fastapi.responses import JSONResponse
+    response = JSONResponse(content={"message": "Выход выполнен"})
+    response.delete_cookie("user_id", path="/")
+    response.delete_cookie("username", path="/")
+    response.delete_cookie("is_admin", path="/")
+    return response
+
+
+@router.get("/auth/me")
+async def get_me(request: Request):
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, email, is_admin, created_at FROM users WHERE id = ?", (int(user_id),))
+    user = cursor.fetchone()
+    conn.close()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Пользователь не найден")
+    return dict(user)

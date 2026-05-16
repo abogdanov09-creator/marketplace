@@ -57,7 +57,6 @@ async def add_comment(product_id: int = Form(...), author: str = Form(...), text
     return RedirectResponse(url=f"/product/{product_id}", status_code=303)
 
 
-# ЭТОТ МАРШРУТ ДОЛЖЕН БЫТЬ!
 @app.get("/cart", response_class=HTMLResponse)
 async def cart_page(request: Request):
     return templates.TemplateResponse("cart.html", {"request": request})
@@ -66,3 +65,31 @@ async def cart_page(request: Request):
 @app.get("/wishlist", response_class=HTMLResponse)
 async def wishlist_page(request: Request):
     return templates.TemplateResponse("wishlist.html", {"request": request})
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
+@app.get("/register", response_class=HTMLResponse)
+async def register_page(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
+
+
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request):
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, email, is_admin, created_at FROM users WHERE id = ?", (int(user_id),))
+    user = cursor.fetchone()
+    conn.close()
+
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+
+    return templates.TemplateResponse("profile.html", {"request": request, "user": user})

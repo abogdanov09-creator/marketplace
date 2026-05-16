@@ -10,9 +10,28 @@
 <nav class="navbar navbar-dark bg-dark">
     <div class="container">
         <a class="navbar-brand" href="/">MarketPlacer</a>
-        <a href="/" class="btn btn-outline-light">← На главную</a>
+        <div class="ms-auto d-flex align-items-center">
+            {% set username = request.cookies.get('username') %}
+            {% if username %}
+                <span class="text-white me-2">Привет, {{ username }}!</span>
+                <a href="/profile" class="btn btn-outline-light btn-sm me-2">Профиль</a>
+                <button onclick="logout()" class="btn btn-outline-light btn-sm me-2">Выйти</button>
+            {% else %}
+                <a href="/login" class="btn btn-outline-light btn-sm me-2">Вход</a>
+                <a href="/register" class="btn btn-outline-light btn-sm me-2">Регистрация</a>
+            {% endif %}
+            <a href="/cart" class="btn btn-outline-light btn-sm me-2">🛒 Корзина</a>
+            <a href="/wishlist" class="btn btn-outline-light btn-sm">❤️ Избранное</a>
+        </div>
     </div>
 </nav>
+
+<script>
+function logout() {
+    fetch('/api/auth/logout', { method: 'POST' })
+        .then(() => window.location.href = '/');
+}
+</script>
 
 <div class="container mt-4">
     <h2>🛒 Корзина</h2>
