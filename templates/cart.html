@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Корзина — MarketPlacer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-dark">
+    <div class="container">
+        <a class="navbar-brand" href="/">MarketPlacer</a>
+        <a href="/" class="btn btn-outline-light">← На главную</a>
+    </div>
+</nav>
+
+<div class="container mt-4">
+    <h2>🛒 Корзина</h2>
+    <hr>
+    <div id="cart-content">Загрузка...</div>
+</div>
+
+<script>
+function loadCart() {
+    fetch('/api/cart')
+        .then(res => res.json())
+        .then(data => {
+            const container = document.getElementById('cart-content');
+            if (!data.items || data.items.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-5">
+                        <h3>Корзина пуста</h3>
+                        <a href="/" class="btn btn-primary mt-3">Перейти к покупкам</a>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `<table class="table table-bordered"><thead class="table-dark"><tr><th>Товар</th><th>Цена</th><th>Кол-во</th><th>Сумма</th><th></th></tr></thead><tbody>`;
+            data.items.forEach(item => {
+                html += `
+                    <tr>
+                        <td><strong>${escapeHtml(item.name)}</strong></td>
+                        <td>$${item.price.toFixed(2)}</td>
+                        <td>
+                            <button class="btn btn-sm btn-secondary" onclick="updateQty(${item.id}, ${item.quantity - 1})">-</button>
+                            <span class="mx-2">${item.quantity}</span>
+                            <button class="btn btn-sm btn-secondary" onclick="updateQty(${item.id}, ${item.quantity + 1})">+</button>
+                        </td>
+                        <td>$${item.subtotal.toFixed(2)}</td>
+                        <td><button class="btn btn-sm btn-danger" onclick="removeItem(${item.id})">Удалить</button></td>
+                    </tr>
+                `;
+            });
+            html += `<tr class="table-light"><th colspan="3" class="text-end">Итого:</th><th colspan="2">$${data.total.toFixed(2)}</th></tr>`;
+            html += `</tbody></table>`;
+            html += `<button class="btn btn-danger" onclick="clearCart()">Очистить корзину</button>`;
+            container.innerHTML = html;
+        });
+}
+
+function updateQty(productId, qty) {
+    if (qty < 0) return;
+    fetch(`/api/cart/update/${productId}/${qty}`, { method: 'POST' })
+        .then(() => loadCart());
+}
+
+function removeItem(productId) {
+    fetch(`/api/cart/remove/${productId}`, { method: 'POST' })
+        .then(() => loadCart());
+}
+
+function clearCart() {
+    fetch('/api/cart/clear', { method: 'POST' })
+        .then(() => loadCart());
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+loadCart();
+</script>
+
+</body>
+</html>

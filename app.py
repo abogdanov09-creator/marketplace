@@ -4,13 +4,8 @@ from fastapi.templating import Jinja2Templates
 from database import get_db
 from api import router as api_router
 
-# Создаём приложение
 app = FastAPI(title="MarketPlacer", description="Маркетплейс на FastAPI")
-
-# Подключаем API
 app.include_router(api_router)
-
-# Шаблоны
 templates = Jinja2Templates(directory="templates")
 
 
@@ -60,3 +55,9 @@ async def add_comment(product_id: int = Form(...), author: str = Form(...), text
         conn.commit()
         conn.close()
     return RedirectResponse(url=f"/product/{product_id}", status_code=303)
+
+
+# ЭТОТ МАРШРУТ ДОЛЖЕН БЫТЬ!
+@app.get("/cart", response_class=HTMLResponse)
+async def cart_page(request: Request):
+    return templates.TemplateResponse("cart.html", {"request": request})

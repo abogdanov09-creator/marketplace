@@ -1,8 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 from database import get_db
+import json
 
 router = APIRouter(prefix="/api", tags=["API"])
 
+
+# ==================== ТОВАРЫ ====================
 
 @router.get("/products")
 async def get_products(category: str = "", price_min: float = None, price_max: float = None):
@@ -96,3 +99,105 @@ async def get_stats():
         "avg_price": round(avg_price, 2),
         "total_comments": total_comments
     }
+
+
+# ==================== КОРЗИНА ====================
+
+def get_cart_from_cookie(request: Request):
+    cart = request.cookies.get("cart")
+    if cart:
+        return json.loads(cart)
+    return {}
+
+
+def save_cart_to_cookie(response: Response, cart: dict):
+    response.set_cookie(key="cart", value=json.dumps(cart), max_age=30 * 24 * 60 * 60, path="/")
+
+
+@router.get("/cart")
+async def get_cart(request: Request):
+    cart = get_cart_from_cookie(request)
+
+    cart_items = []
+    total = 0
+    conn = get_db()
+    cursor = conn.cursor()
+
+    for product_id, item in cart.items():
+        cursor.execute("SELECT * FROM products WHERE id = ?", (int(product_id),))
+        product = cursor.fetchone()
+        if product:
+            quantity = item.get("quantity", 1)
+            subtotal = product["price"] * quantity
+            total += subtotal
+            cart_items.append({
+                "id": product["id"],
+                "name": product["name"],
+                "price": product["price"],
+                "quantity": quantity,
+                "subtotal": subtotal,
+                "stock": product["stock"]
+            })
+
+    conn.close()
+    return {"items": cart_items, "total": round(total, 2), "count": len(cart_items)}
+
+
+@router.post("/cart/add/{product_id}")
+async def add_to_cart(request: Request, product_id: int):
+    from fastapi.responses import JSONResponse
+
+    cart = get_cart_from_cookie(request)
+    product_id_str = str(product_id)
+
+    if product_id_str in cart:
+        cart[product_id_str]["quantity"] += 1
+    else:
+        cart[product_id_str] = {"quantity": 1}
+
+    response = JSONResponse(content={"message": "Товар добавлен в корзину"})
+    save_cart_to_cookie(response, cart)
+    return response
+
+
+@router.post("/cart/update/{product_id}/{quantity}")
+async def update_cart(request: Request, product_id: int, quantity: int):
+    from fastapi.responses import JSONResponse
+
+    cart = get_cart_from_cookie(request)
+    product_id_str = str(product_id)
+
+    if quantity <= 0:
+        if product_id_str in cart:
+            del cart[product_id_str]
+    else:
+        if product_id_str in cart:
+            cart[product_id_str]["quantity"] = quantity
+
+    response = JSONResponse(content={"message": "Корзина обновлена"})
+    save_cart_to_cookie(response, cart)
+    return response
+
+
+@router.post("/cart/remove/{product_id}")
+async def remove_from_cart(request: Request, product_id: int):
+    from fastapi.responses import JSONResponse
+
+    cart = get_cart_from_cookie(request)
+    product_id_str = str(product_id)
+
+    if product_id_str in cart:
+        del cart[product_id_str]
+
+    response = JSONResponse(content={"message": "Товар удалён из корзины"})
+    save_cart_to_cookie(response, cart)
+    return response
+
+
+@router.post("/cart/clear")
+async def clear_cart():
+    from fastapi.responses import JSONResponse
+
+    response = JSONResponse(content={"message": "Корзина очищена"})
+    save_cart_to_cookie(response, {})
+    return response
