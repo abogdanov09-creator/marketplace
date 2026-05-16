@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Товары — Админ-панель</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-dark bg-dark">
+    <div class="container">
+        <a class="navbar-brand" href="/">MarketPlacer</a>
+        <a class="nav-link text-white" href="/admin">Дашборд</a>
+        <a class="nav-link text-white" href="/admin/products">Товары</a>
+        <a class="nav-link text-white" href="/admin/comments">Комментарии</a>
+        <a class="nav-link text-white" href="/admin/users">Пользователи</a>
+        <a class="nav-link text-white" href="/">На сайт</a>
+    </div>
+</nav>
+<div class="container mt-4">
+    <h2>📦 Управление товарами</h2>
+    <a href="/admin/products/new" class="btn btn-success mb-3">➕ Добавить товар</a>
+
+    <table class="table table-bordered">
+        <thead class="table-dark">
+            <tr><th>ID</th><th>Название</th><th>Категория</th><th>Цена</th><th>Остаток</th><th>Действия</th></tr>
+        </thead>
+        <tbody>
+            {% for product in products %}
+            <tr>
+                <td>{{ product.id }}</td>
+                <td>{{ product.name }}</td>
+                <td>{{ product.category }}</td>
+                <td>${{ product.price }}</td>
+                <td>{{ product.stock }}</td>
+                <td>
+                    <a href="/admin/products/{{ product.id }}/edit" class="btn btn-sm btn-primary">✏️</a>
+                    <a href="/admin/products/{{ product.id }}/delete" class="btn btn-sm btn-danger" onclick="return confirm('Удалить товар?')">🗑️</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+</body>
+</html>

@@ -67,29 +67,46 @@ async def wishlist_page(request: Request):
     return templates.TemplateResponse("wishlist.html", {"request": request})
 
 
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
-
-
-@app.get("/register", response_class=HTMLResponse)
-async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request})
-
-
 @app.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request):
-    user_id = request.cookies.get("user_id")
-    if not user_id:
-        return RedirectResponse(url="/login", status_code=303)
+    return templates.TemplateResponse("profile.html", {"request": request})
 
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request):
+    return templates.TemplateResponse("admin/dashboard.html", {"request": request})
+
+
+@app.get("/admin/products")
+async def admin_products_page(request: Request):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username, email, is_admin, created_at FROM users WHERE id = ?", (int(user_id),))
-    user = cursor.fetchone()
+    cursor.execute("SELECT * FROM products ORDER BY id")
+    products = cursor.fetchall()
     conn.close()
+    return templates.TemplateResponse("admin/products.html", {"request": request, "products": products})
 
-    if not user:
-        return RedirectResponse(url="/login", status_code=303)
 
-    return templates.TemplateResponse("profile.html", {"request": request, "user": user})
+@app.get("/admin/comments")
+async def admin_comments_page(request: Request):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT comments.*, products.name as product_name 
+        FROM comments 
+        LEFT JOIN products ON comments.product_id = products.id 
+        ORDER BY comments.id DESC
+    """)
+    comments = cursor.fetchall()
+    conn.close()
+    return templates.TemplateResponse("admin/comments.html", {"request": request, "comments": comments})
+
+
+@app.get("/admin/users")
+async def admin_users_page(request: Request):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, email, is_admin, created_at FROM users ORDER BY id")
+    users = cursor.fetchall()
+    conn.close()
+    return templates.TemplateResponse("admin/users.html", {"request": request, "users": users})

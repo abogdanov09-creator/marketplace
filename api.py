@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, Response
 from database import get_db
 import json
-from werkzeug.security import generate_password_hash, check_password_hash
 
 router = APIRouter(prefix="/api", tags=["API"])
 
@@ -269,76 +268,123 @@ async def check_wishlist(request: Request, product_id: int):
     return {"in_wishlist": product_id in wishlist}
 
 
-# ==================== АВТОРИЗАЦИЯ ====================
+# ==================== АДМИН-ПАНЕЛЬ ====================
 
-@router.post("/auth/register")
-async def register(username: str, email: str, password: str):
+@router.get("/admin/stats")
+async def admin_stats(request: Request):
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT id FROM users WHERE username = ? OR email = ?", (username, email))
-    if cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=400, detail="Пользователь уже существует")
+    cursor.execute("SELECT COUNT(*) as total FROM products")
+    total_products = cursor.fetchone()['total']
 
-    password_hash = generate_password_hash(password)
+    cursor.execute("SELECT COUNT(*) as total FROM comments")
+    total_comments = cursor.fetchone()['total']
+
+    cursor.execute("SELECT COUNT(*) as total FROM users")
+    total_users = cursor.fetchone()['total']
+
+    cursor.execute("SELECT COUNT(*) as low_stock FROM products WHERE stock < 5")
+    low_stock = cursor.fetchone()['low_stock']
+
+    conn.close()
+
+    return {
+        "total_products": total_products,
+        "total_comments": total_comments,
+        "total_users": total_users,
+        "low_stock": low_stock
+    }
+
+
+@router.get("/admin/products")
+async def admin_products(request: Request):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM products ORDER BY id")
+    products = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return products
+
+
+@router.post("/admin/products")
+async def admin_create_product(request: Request, name: str, category: str, price: float, description: str, stock: int):
+    conn = get_db()
+    cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
-        (username, email, password_hash)
+        "INSERT INTO products (name, category, price, description, stock) VALUES (?, ?, ?, ?, ?)",
+        (name, category, price, description, stock)
     )
     conn.commit()
-    user_id = cursor.lastrowid
+    product_id = cursor.lastrowid
     conn.close()
+    return {"id": product_id, "message": "Товар создан"}
 
-    return {"id": user_id, "username": username, "email": email, "message": "Регистрация успешна"}
 
-
-@router.post("/auth/login")
-async def login(username: str, password: str, request: Request):
-    from fastapi.responses import JSONResponse
-
+@router.put("/admin/products/{product_id}")
+async def admin_update_product(request: Request, product_id: int, name: str, category: str, price: float,
+                               description: str, stock: int):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT * FROM users WHERE username = ? OR email = ?",
-        (username, username)
+        "UPDATE products SET name=?, category=?, price=?, description=?, stock=? WHERE id=?",
+        (name, category, price, description, stock, product_id)
     )
-    user = cursor.fetchone()
+    conn.commit()
     conn.close()
-
-    if not user or not check_password_hash(user["password_hash"], password):
-        raise HTTPException(status_code=401, detail="Неверные учётные данные")
-
-    response = JSONResponse(
-        content={"message": "Вход выполнен", "username": user["username"], "is_admin": bool(user["is_admin"])})
-    response.set_cookie(key="user_id", value=str(user["id"]), max_age=30 * 24 * 60 * 60, path="/")
-    response.set_cookie(key="username", value=user["username"], max_age=30 * 24 * 60 * 60, path="/")
-    response.set_cookie(key="is_admin", value=str(user["is_admin"]), max_age=30 * 24 * 60 * 60, path="/")
-    return response
+    return {"message": "Товар обновлён"}
 
 
-@router.post("/auth/logout")
-async def logout():
-    from fastapi.responses import JSONResponse
-    response = JSONResponse(content={"message": "Выход выполнен"})
-    response.delete_cookie("user_id", path="/")
-    response.delete_cookie("username", path="/")
-    response.delete_cookie("is_admin", path="/")
-    return response
-
-
-@router.get("/auth/me")
-async def get_me(request: Request):
-    user_id = request.cookies.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Не авторизован")
-
+@router.delete("/admin/products/{product_id}")
+async def admin_delete_product(request: Request, product_id: int):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username, email, is_admin, created_at FROM users WHERE id = ?", (int(user_id),))
-    user = cursor.fetchone()
+    cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
+    conn.commit()
     conn.close()
+    return {"message": "Товар удалён"}
 
-    if not user:
-        raise HTTPException(status_code=401, detail="Пользователь не найден")
-    return dict(user)
+
+@router.get("/admin/comments")
+async def admin_comments(request: Request):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT comments.*, products.name as product_name 
+        FROM comments 
+        LEFT JOIN products ON comments.product_id = products.id 
+        ORDER BY comments.id DESC
+    """)
+    comments = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return comments
+
+
+@router.delete("/admin/comments/{comment_id}")
+async def admin_delete_comment(request: Request, comment_id: int):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM comments WHERE id = ?", (comment_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Комментарий удалён"}
+
+
+@router.get("/admin/users")
+async def admin_users(request: Request):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, email, is_admin, created_at FROM users ORDER BY id")
+    users = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return users
+
+
+@router.post("/admin/users/{user_id}/toggle-admin")
+async def admin_toggle_admin(request: Request, user_id: int):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET is_admin = NOT is_admin WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Права пользователя изменены"}
