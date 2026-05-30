@@ -30,10 +30,10 @@ logs/
 .coverage
 htmlcov/
 
-# Docker
-*.pid
-docker-compose.override.yml
-
 # Project specific
 marketplace.db
 .DS_Store
+
+# Bytecode
+*.pyc
+*.pyo

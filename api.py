@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, Response
 from database import get_db
+from filters import apply_filters
 import json
 
 router = APIRouter(prefix="/api", tags=["API"])
@@ -9,35 +10,24 @@ router = APIRouter(prefix="/api", tags=["API"])
 
 @router.get("/products")
 async def get_products(category: str = "", price_min: float = None, price_max: float = None):
-    conn = get_db()
-    cursor = conn.cursor()
-
     query = "SELECT * FROM products WHERE 1=1"
     params = []
+    query, params = apply_filters(query, params, category, price_min, price_max)
 
-    if category:
-        query += " AND category = ?"
-        params.append(category)
-    if price_min:
-        query += " AND price >= ?"
-        params.append(price_min)
-    if price_max:
-        query += " AND price <= ?"
-        params.append(price_max)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        products = [dict(row) for row in cursor.fetchall()]
 
-    cursor.execute(query, params)
-    products = [dict(row) for row in cursor.fetchall()]
-    conn.close()
     return products
 
 
 @router.get("/products/{product_id}")
 async def get_product(product_id: int):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
-    product = cursor.fetchone()
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+        product = cursor.fetchone()
 
     if not product:
         raise HTTPException(status_code=404, detail="Товар не найден")
@@ -46,44 +36,43 @@ async def get_product(product_id: int):
 
 @router.get("/products/search")
 async def search_products(q: str = ""):
-    """Поиск товаров по названию и описанию"""
     if not q:
         return []
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT * FROM products 
-        WHERE name LIKE ? OR description LIKE ?
-        ORDER BY 
-            CASE 
-                WHEN name LIKE ? THEN 1 
-                WHEN description LIKE ? THEN 2 
-                ELSE 3 
-            END
-    """, (f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%'))
-    products = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM products 
+            WHERE name LIKE ? OR description LIKE ?
+            ORDER BY 
+                CASE 
+                    WHEN name LIKE ? THEN 1 
+                    WHEN description LIKE ? THEN 2 
+                    ELSE 3 
+                END
+        """, (f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%'))
+        products = [dict(row) for row in cursor.fetchall()]
+
     return products
 
 
 @router.get("/categories")
 async def get_categories():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT category FROM products")
-    categories = [row['category'] for row in cursor.fetchall()]
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT category FROM products")
+        categories = [row['category'] for row in cursor.fetchall()]
+
     return categories
 
 
 @router.get("/products/{product_id}/comments")
 async def get_comments(product_id: int):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM comments WHERE product_id = ?", (product_id,))
-    comments = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM comments WHERE product_id = ?", (product_id,))
+        comments = [dict(row) for row in cursor.fetchall()]
+
     return comments
 
 
@@ -92,30 +81,25 @@ async def add_comment(product_id: int, author: str, text: str):
     if not author or not text:
         raise HTTPException(status_code=400, detail="Имя и текст обязательны")
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO comments (product_id, author, text) VALUES (?, ?, ?)",
-                   (product_id, author, text))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO comments (product_id, author, text) VALUES (?, ?, ?)",
+                       (product_id, author, text))
+        conn.commit()
+
     return {"message": "Комментарий добавлен"}
 
 
 @router.get("/stats")
 async def get_stats():
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) as total FROM products")
-    total_products = cursor.fetchone()['total']
-
-    cursor.execute("SELECT AVG(price) as avg FROM products")
-    avg_price = cursor.fetchone()['avg'] or 0
-
-    cursor.execute("SELECT COUNT(*) as total_comments FROM comments")
-    total_comments = cursor.fetchone()['total']
-
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as total FROM products")
+        total_products = cursor.fetchone()['total']
+        cursor.execute("SELECT AVG(price) as avg FROM products")
+        avg_price = cursor.fetchone()['avg'] or 0
+        cursor.execute("SELECT COUNT(*) as total_comments FROM comments")
+        total_comments = cursor.fetchone()['total']
 
     return {
         "total_products": total_products,
@@ -140,29 +124,27 @@ def save_cart_to_cookie(response: Response, cart: dict):
 @router.get("/cart")
 async def get_cart(request: Request):
     cart = get_cart_from_cookie(request)
-
     cart_items = []
     total = 0
-    conn = get_db()
-    cursor = conn.cursor()
 
-    for product_id, item in cart.items():
-        cursor.execute("SELECT * FROM products WHERE id = ?", (int(product_id),))
-        product = cursor.fetchone()
-        if product:
-            quantity = item.get("quantity", 1)
-            subtotal = product["price"] * quantity
-            total += subtotal
-            cart_items.append({
-                "id": product["id"],
-                "name": product["name"],
-                "price": product["price"],
-                "quantity": quantity,
-                "subtotal": subtotal,
-                "stock": product["stock"]
-            })
+    with get_db() as conn:
+        cursor = conn.cursor()
+        for product_id, item in cart.items():
+            cursor.execute("SELECT * FROM products WHERE id = ?", (int(product_id),))
+            product = cursor.fetchone()
+            if product:
+                quantity = item.get("quantity", 1)
+                subtotal = product["price"] * quantity
+                total += subtotal
+                cart_items.append({
+                    "id": product["id"],
+                    "name": product["name"],
+                    "price": product["price"],
+                    "quantity": quantity,
+                    "subtotal": subtotal,
+                    "stock": product["stock"]
+                })
 
-    conn.close()
     return {"items": cart_items, "total": round(total, 2), "count": len(cart_items)}
 
 
@@ -242,18 +224,16 @@ def save_wishlist_to_cookie(response: Response, wishlist: list):
 @router.get("/wishlist")
 async def get_wishlist(request: Request):
     wishlist_ids = get_wishlist_from_cookie(request)
-
     wishlist_items = []
-    conn = get_db()
-    cursor = conn.cursor()
 
-    for product_id in wishlist_ids:
-        cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
-        product = cursor.fetchone()
-        if product:
-            wishlist_items.append(dict(product))
+    with get_db() as conn:
+        cursor = conn.cursor()
+        for product_id in wishlist_ids:
+            cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+            product = cursor.fetchone()
+            if product:
+                wishlist_items.append(dict(product))
 
-    conn.close()
     return wishlist_items
 
 
@@ -295,22 +275,16 @@ async def check_wishlist(request: Request, product_id: int):
 
 @router.get("/admin/stats")
 async def admin_stats(request: Request):
-    conn = get_db()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) as total FROM products")
-    total_products = cursor.fetchone()['total']
-
-    cursor.execute("SELECT COUNT(*) as total FROM comments")
-    total_comments = cursor.fetchone()['total']
-
-    cursor.execute("SELECT COUNT(*) as total FROM users")
-    total_users = cursor.fetchone()['total']
-
-    cursor.execute("SELECT COUNT(*) as low_stock FROM products WHERE stock < 5")
-    low_stock = cursor.fetchone()['low_stock']
-
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as total FROM products")
+        total_products = cursor.fetchone()['total']
+        cursor.execute("SELECT COUNT(*) as total FROM comments")
+        total_comments = cursor.fetchone()['total']
+        cursor.execute("SELECT COUNT(*) as total FROM users")
+        total_users = cursor.fetchone()['total']
+        cursor.execute("SELECT COUNT(*) as low_stock FROM products WHERE stock < 5")
+        low_stock = cursor.fetchone()['low_stock']
 
     return {
         "total_products": total_products,
@@ -322,92 +296,92 @@ async def admin_stats(request: Request):
 
 @router.get("/admin/products")
 async def admin_products(request: Request):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM products ORDER BY id")
-    products = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM products ORDER BY id")
+        products = [dict(row) for row in cursor.fetchall()]
+
     return products
 
 
 @router.post("/admin/products")
 async def admin_create_product(request: Request, name: str, category: str, price: float, description: str, stock: int):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO products (name, category, price, description, stock) VALUES (?, ?, ?, ?, ?)",
-        (name, category, price, description, stock)
-    )
-    conn.commit()
-    product_id = cursor.lastrowid
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO products (name, category, price, description, stock) VALUES (?, ?, ?, ?, ?)",
+            (name, category, price, description, stock)
+        )
+        conn.commit()
+        product_id = cursor.lastrowid
+
     return {"id": product_id, "message": "Товар создан"}
 
 
 @router.put("/admin/products/{product_id}")
 async def admin_update_product(request: Request, product_id: int, name: str, category: str, price: float,
                                description: str, stock: int):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE products SET name=?, category=?, price=?, description=?, stock=? WHERE id=?",
-        (name, category, price, description, stock, product_id)
-    )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE products SET name=?, category=?, price=?, description=?, stock=? WHERE id=?",
+            (name, category, price, description, stock, product_id)
+        )
+        conn.commit()
+
     return {"message": "Товар обновлён"}
 
 
 @router.delete("/admin/products/{product_id}")
 async def admin_delete_product(request: Request, product_id: int):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
+        conn.commit()
+
     return {"message": "Товар удалён"}
 
 
 @router.get("/admin/comments")
 async def admin_comments(request: Request):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT comments.*, products.name as product_name 
-        FROM comments 
-        LEFT JOIN products ON comments.product_id = products.id 
-        ORDER BY comments.id DESC
-    """)
-    comments = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT comments.*, products.name as product_name 
+            FROM comments 
+            LEFT JOIN products ON comments.product_id = products.id 
+            ORDER BY comments.id DESC
+        """)
+        comments = [dict(row) for row in cursor.fetchall()]
+
     return comments
 
 
 @router.delete("/admin/comments/{comment_id}")
 async def admin_delete_comment(request: Request, comment_id: int):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM comments WHERE id = ?", (comment_id,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM comments WHERE id = ?", (comment_id,))
+        conn.commit()
+
     return {"message": "Комментарий удалён"}
 
 
 @router.get("/admin/users")
 async def admin_users(request: Request):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, username, email, is_admin, created_at FROM users ORDER BY id")
-    users = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, username, email, is_admin, created_at FROM users ORDER BY id")
+        users = [dict(row) for row in cursor.fetchall()]
+
     return users
 
 
 @router.post("/admin/users/{user_id}/toggle-admin")
 async def admin_toggle_admin(request: Request, user_id: int):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET is_admin = NOT is_admin WHERE id = ?", (user_id,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET is_admin = NOT is_admin WHERE id = ?", (user_id,))
+        conn.commit()
+
     return {"message": "Права пользователя изменены"}
