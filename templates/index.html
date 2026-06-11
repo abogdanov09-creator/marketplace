@@ -5,7 +5,7 @@
     <title>MarketPlacer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .product-card { transition: 0.3s; margin-bottom: 20px; }
+        .product-card { transition: 0.3s; margin-bottom: 20px; cursor: pointer; }
         .product-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
         .price { font-size: 1.3rem; font-weight: bold; color: #198754; }
         .hero { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 20px; padding: 50px; margin-bottom: 40px; color: white; }
@@ -16,6 +16,10 @@
 <nav class="navbar navbar-dark bg-dark">
     <div class="container">
         <a class="navbar-brand" href="/">MarketPlacer</a>
+        <div class="ms-auto d-flex align-items-center">
+            <a href="/cart" class="btn btn-outline-light btn-sm me-2">🛒 Корзина</a>
+            <a href="/wishlist" class="btn btn-outline-light btn-sm">❤️ Избранное</a>
+        </div>
     </div>
 </nav>
 
@@ -23,24 +27,144 @@
     <div class="hero text-center">
         <h1>🛍️ Добро пожаловать в MarketPlacer</h1>
         <p>Лучшие товары по лучшим ценам</p>
+        <button class="btn btn-light btn-lg mt-3" onclick="scrollToProducts()">
+            <i class="fas fa-arrow-down"></i> Начать покупки
+        </button>
     </div>
 
-    <div class="row">
+    <!-- Поиск -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title mb-3">
+                <i class="fas fa-search"></i> Поиск товаров
+            </h5>
+            <form method="GET" action="/search">
+                <div class="row">
+                    <div class="col-md-10">
+                        <input type="text" name="q" class="form-control" placeholder="Введите название товара...">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-search"></i> Искать
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Фильтры -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title mb-3">
+                <i class="fas fa-filter"></i> Фильтр товаров
+            </h5>
+            <form method="GET" action="/">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Категория</label>
+                        <select name="category" class="form-select">
+                            <option value="">Все категории</option>
+                            {% for cat in categories %}
+                                <option value="{{ cat.category }}" {% if selected_category == cat.category %}selected{% endif %}>
+                                    {{ cat.category }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Цена от ($)</label>
+                        <input type="number" name="price_min" class="form-control" value="{{ price_min or '' }}" placeholder="0" step="0.01">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Цена до ($)</label>
+                        <input type="number" name="price_max" class="form-control" value="{{ price_max or '' }}" placeholder="1000" step="0.01">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-search"></i> Найти
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Товары -->
+    <div class="row" id="productsContainer">
         {% for product in products %}
-        <div class="col-md-4">
-            <div class="card product-card">
+        <div class="col-md-4 col-lg-3 mb-4">
+            <div class="card product-card" onclick="window.location.href='/product/{{ product.id }}'">
                 <div class="card-body">
                     <h5>{{ product.name }}</h5>
                     <span class="badge bg-secondary">{{ product.category }}</span>
                     <div class="price mt-2">${{ product.price }}</div>
-                    <p class="mt-2">{{ product.description[:80] }}...</p>
-                    <a href="/product/{{ product.id }}" class="btn btn-primary w-100">Подробнее</a>
+                    <p class="mt-2 text-muted small">{{ product.description[:80] }}...</p>
+                    <div class="d-grid gap-2 mt-2">
+                        <a href="/cart/add/{{ product.id }}" class="btn btn-primary" onclick="event.stopPropagation()">
+                            🛒 В корзину
+                        </a>
+                        <a href="/wishlist/add/{{ product.id }}" class="btn btn-outline-danger" onclick="event.stopPropagation()">
+                            ❤️ В избранное
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
         {% endfor %}
     </div>
+
+    <!-- Пагинация -->
+    {% if total_pages > 1 %}
+    <div class="pagination-container mt-4">
+        <nav aria-label="Пагинация">
+            <ul class="pagination justify-content-center">
+                {% if page > 1 %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page-1 }}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if price_min %}&price_min={{ price_min }}{% endif %}{% if price_max %}&price_max={{ price_max }}{% endif %}">
+                        ← Назад
+                    </a>
+                </li>
+                {% endif %}
+
+                {% set start_page = [page - 2, 1]|max %}
+                {% set end_page = [start_page + 4, total_pages]|min %}
+                {% if end_page - start_page < 4 %}
+                    {% set start_page = [end_page - 4, 1]|max %}
+                {% endif %}
+
+                {% for p in range(start_page, end_page + 1) %}
+                    {% if p == page %}
+                        <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                    {% else %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ p }}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if price_min %}&price_min={{ price_min }}{% endif %}{% if price_max %}&price_max={{ price_max }}{% endif %}">{{ p }}</a>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page < total_pages %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page+1 }}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if price_min %}&price_min={{ price_min }}{% endif %}{% if price_max %}&price_max={{ price_max }}{% endif %}">
+                        Вперёд →
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        <div class="text-center text-muted">
+            <small>Показано {{ ((page-1)*per_page) + 1 }} - {{ [page*per_page, total]|min }} из {{ total }} товаров</small>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
+<script>
+function scrollToProducts() {
+    document.querySelector('.card.shadow-sm').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
